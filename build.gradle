@@ -1,0 +1,46 @@
+plugins {
+    // Applies the Java plugin for building Java apps
+    id 'java'
+
+    // Adds Spring Boot support and task for running your app
+    id 'org.springframework.boot' version '3.2.2'
+
+    // Keeps dependency versions compatible with Spring Boot
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'com.nhp'           // Java package namespace / artifact group ID
+version = '0.0.1-SNAPSHOT'  // App version
+
+// Java language compatibility (you're using Java 23)
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral() // Main place to fetch Java libraries from
+}
+
+dependencies {
+    // Core Spring Boot (reactive) for handling WebSocket & non-blocking IO
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    // // JPA for DB access, PostgreSQL driver for TimescaleDB
+    // implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    // implementation 'org.postgresql:postgresql'
+
+    // // Kafka support (optional for later)
+    // implementation 'org.springframework.kafka:spring-kafka'
+
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    // Lombok: generate boilerplate (getters, constructors, etc.)
+    implementation 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // Testing tools
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'io.projectreactor:reactor-test'
+}
