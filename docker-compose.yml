@@ -23,7 +23,7 @@ services:
     environment:
       POSTGRES_USER: nhp
       POSTGRES_PASSWORD: nhppass
-      POSTGRES_DB: risdb
+      POSTGRES_DB: nhpdb
     volumes:
       - timescale-data:/var/lib/postgresql/data
 
@@ -37,6 +37,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
       - grafana-data:/var/lib/grafana
+    logging:
+      driver: "none"
 
 
 volumes:

@@ -1,0 +1,33 @@
+stream:
+  debounce-ms: 5000
+
+spring:
+  datasource:
+    url: jdbc:postgresql://timescaledb:5432/nhpdb
+    username: nhp
+    password: nhppass
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+logging:
+  level:
+    root: INFO # Reduce global noise (was DEBUG by default in dev)
+    org.springframework: WARN # Suppress most Spring internals
+    org.hibernate.SQL: OFF # Turn off raw SQL logging
+    org.hibernate.type.descriptor.sql.BasicBinder: OFF
+    com.nhp: DEBUG # Your package — keep this at DEBUG to see your own logs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,mappings
+  metrics:
+    export:
+      prometheus:
+        enabled: true

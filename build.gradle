@@ -26,9 +26,9 @@ dependencies {
     // Core Spring Boot (reactive) for handling WebSocket & non-blocking IO
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
 
-    // // JPA for DB access, PostgreSQL driver for TimescaleDB
-    // implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    // implementation 'org.postgresql:postgresql'
+    // JPA for DB access, PostgreSQL driver for TimescaleDB
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.postgresql:postgresql'
 
     // // Kafka support (optional for later)
     // implementation 'org.springframework.kafka:spring-kafka'
@@ -39,6 +39,8 @@ dependencies {
     // Lombok: generate boilerplate (getters, constructors, etc.)
     implementation 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
+
+    implementation("com.google.guava:guava:33.4.6-jre")
 
     // Testing tools
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
