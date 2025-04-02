@@ -16,18 +16,6 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
 
-  timescaledb:
-    image: timescale/timescaledb:latest-pg15
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: nhp
-      POSTGRES_PASSWORD: nhppass
-      POSTGRES_DB: nhpdb
-    volumes:
-      - timescale-data:/var/lib/postgresql/data
-
-
   grafana:
     image: grafana/grafana
     ports:
@@ -42,6 +30,5 @@ services:
 
 
 volumes:
-  timescale-data:
   prometheus-data:
   grafana-data:

@@ -1,6 +1,7 @@
 package com.nhp.stream;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -11,21 +12,20 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nhp.config.StreamProperties;
-import com.nhp.model.MonitoredPrefix;
-import com.nhp.repos.MonitoredPrefixesRepo;
+import com.nhp.services.MetricsService;
 
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.http.client.WebsocketClientSpec;
 import reactor.core.Disposable;
+import reactor.util.retry.Retry;
 
 @Slf4j
 @Component
 public class RipeStreamClient {
 
     @Autowired
-    private MonitoredPrefixesRepo monitoredPrefixesRepo;
+    private MetricsService metricsService;
 
     private static final String RIS_WS_URL = "wss://ris-live.ripe.net/v1/ws/";
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -33,15 +33,25 @@ public class RipeStreamClient {
 
     @PostConstruct
     public void startStream() {
-        restartStreamWithPrefixes();
+        // TODO fetch this list of prefixes from the kafka stream
+        restartStreamWithPrefixes(List.of("8.8.8.0/24"));
     }
 
-    public void restartStreamWithPrefixes() {
+    // gracefully handle app shutdown, least thing we can do
+    @PreDestroy
+    public void stopStream() {
+        if (connection != null && !connection.isDisposed()) {
+            connection.dispose();
+            log.info("RIPE stream connection closed on shutdown.");
+        }
+    }
+
+    public void restartStreamWithPrefixes(List<String> prefixes) {
         if (connection != null && !connection.isDisposed()) {
             connection.dispose();
             log.info("Closed previous RIPE stream connection");
         }
-        List<String> prefixes = monitoredPrefixesRepo.findAllPrefixes();
+
         log.info("Connecting to RIPE RIS WebSocket with {} prefix(es)", prefixes.size());
 
         connection = HttpClient.create()
@@ -55,13 +65,19 @@ public class RipeStreamClient {
 
                     // consumer logic from this socket now
                     inbound.receive().asString()
-                            .doOnNext(msg -> log.info("BGP Message: {}", msg))
+                            .doOnNext(msg -> {
+                                log.info("BGP Message: {}", msg);
+                                metricsService.incrementBgpMessagesReceieved();
+                            })
                             .doOnError(error -> log.error("Error while streaming", error))
                             .doOnComplete(() -> log.warn("Stream completed/disconnected"))
                             .subscribe();
                     return Mono.never();
                 })
                 .doOnError(error -> log.error("WebSocket connection error", error))
+                .retryWhen(Retry.backoff(5, java.time.Duration.ofSeconds(5))
+                        .doBeforeRetry(retrySignal -> log.warn("Retrying RIPE WebSocket connection (attempt {})",
+                                retrySignal.totalRetries() + 1)))
                 .subscribe();
     }
 

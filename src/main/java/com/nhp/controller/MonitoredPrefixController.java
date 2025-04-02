@@ -12,8 +12,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nhp.dto.MultipleMonitoredPrefixesRequest;
 import com.nhp.dto.SingleMonitoredPrefixRequest;
-import com.nhp.model.MonitoredPrefix;
-import com.nhp.repos.MonitoredPrefixesRepo;
 import com.nhp.stream.RipeStreamClient;
 
 import java.time.Instant;
@@ -24,50 +22,42 @@ import java.util.List;
 public class MonitoredPrefixController {
 
     @Autowired
-    private final MonitoredPrefixesRepo monitoredPrefixesRepo;
-
-    @Autowired
     private final RipeStreamClient ripeStreamClient;
 
-    public MonitoredPrefixController(MonitoredPrefixesRepo repo, RipeStreamClient client) {
-        monitoredPrefixesRepo = repo;
+    public MonitoredPrefixController(RipeStreamClient client) {
         ripeStreamClient = client;
     }
 
     @PostMapping("/add-one")
     public ResponseEntity<Void> addPrefix(@RequestBody SingleMonitoredPrefixRequest request) {
-        monitoredPrefixesRepo.save(
-                MonitoredPrefix.builder()
-                        .prefix(request.getPrefix())
-                        .createdAt(Instant.now())
-                        .build());
-        // restart the live streamer so we can track this new prefix
-        ripeStreamClient.restartStreamWithPrefixes();
+        // TODO save the prefix to the new kafka topic
+        // We shouldn't have to pass list of prefixes here, find a fix
+        ripeStreamClient.restartStreamWithPrefixes(List.of("8.8.8.0/24"));
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/add")
     public ResponseEntity<Void> addPrefixes(@RequestBody MultipleMonitoredPrefixesRequest request) {
-        List<MonitoredPrefix> prefixes = request.getPrefixes()
-                .stream()
-                .map(prefix -> MonitoredPrefix.builder().prefix(prefix).createdAt(Instant.now()).build())
-                .toList();
-        // save in batch
-        monitoredPrefixesRepo.saveAll(prefixes);
 
-        ripeStreamClient.restartStreamWithPrefixes();
+        // save in batch
+        // TODO save all these prefixes to the kafka topic
+        // TODO do something about restartStream needing the list of prefixes
+
+        ripeStreamClient.restartStreamWithPrefixes(List.of("8.8.8.0/24"));
 
         return ResponseEntity.ok().build();
     }
 
-    @GetMapping
-    public List<MonitoredPrefix> getPrefixes() {
-        return monitoredPrefixesRepo.findAll();
-    }
+    // TODO Redis implementation for fetching and deleting the prefixes
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Long id) {
-        monitoredPrefixesRepo.deleteById(id);
-        return ResponseEntity.noContent().build();
-    }
+    // @GetMapping
+    // public List<MonitoredPrefix> getPrefixes() {
+    // return monitoredPrefixesRepo.findAll();
+    // }
+
+    // @DeleteMapping("/{id}")
+    // public ResponseEntity<?> delete(@PathVariable Long id) {
+    // monitoredPrefixesRepo.deleteById(id);
+    // return ResponseEntity.noContent().build();
+    // }
 }
