@@ -6,35 +6,13 @@ A real-time BGP monitoring application that detects and correlates Internet outa
 
 ## Features
 
-- ✅ Real-time WebSocket ingestion of BGP UPDATEs (RIPE RIS Live)
-- ✅ Live visibility tracking per prefix across global collectors
-- ✅ Outage detection when a prefix becomes globally unreachable
-- ✅ Recovery detection when a withdrawn prefix reappears
-- ✅ Correlation of prefix outages into ASN-level outage events
-- ✅ Prometheus metrics exposure for monitoring dashboards
-- ✅ REST API for frontend dashboard queries
-
----
-
-## Architecture Overview
-
-[RIPE RIS Live WebSocket]
-↓
-[RipeStreamClient] — parses BGP UPDATEs (announce/withdraw)
-↓
-[UpdateProcessor] — handles state tracking & outage detection
-↓
-┌──────────────────────────┐ ┌──────────────────────────┐
-│ Redis (Prefix State) │ │ outage_events (Postgres)│
-└──────────────────────────┘ └──────────────────────────┘
-↓
-[AsnOutageCorrelator] — groups prefix outages by ASN
-↓
-[asn_outages (Postgres)] — correlated ASN-level outages
-↓
-[Prometheus Metrics] + [Spring REST API for Frontend]
-
----
+- Real-time WebSocket ingestion of BGP UPDATEs (RIPE RIS Live)
+- Live visibility tracking per prefix across global collectors
+- Outage detection when a prefix becomes globally unreachable
+- Recovery detection when a withdrawn prefix reappears
+- Correlation of prefix outages into ASN-level outage events
+- Prometheus metrics exposure for monitoring dashboards
+- REST API for frontend dashboard queries
 
 ## System Components
 
@@ -131,7 +109,7 @@ Example endpoints:
 
 ---
 
-## Lifecycle Summary
+## Prefix and Outage detection flow
 
 1. **Announce arrives**
 
@@ -161,41 +139,14 @@ Example endpoints:
 ## Technologies
 
 - **Java 17** / **Spring Boot 3**
+- Gradle (build management)
+- Docker (service containerization)
 - **Redis** (prefix visibility tracking)
 - **PostgreSQL / TimescaleDB** (event persistence)
 - **Micrometer + Prometheus** (metrics)
 - **Spring Web / Spring WebSocket** (API + ingest)
-- **Leaflet.js** or **Mapbox** (recommended frontend)
 
 ---
 
 ## Setup
 
-1. Run Redis and PostgreSQL
-2. Start backend:
-
-```bash
-./gradlew bootRun
-```
-
-3. Launch Prometheus and configure to scrape localhost:8080/actuator/prometheus
-4. Build frontend map (separate repo)
-
-⸻
-
-## Future Enhancements
-
-• ASN ranking based on outage frequency
-• Country-level heatmap generation
-• Alerting via Slack or webhook on ASN outage detection
-• RPKI and IRR validation
-• Integration with RIPE Atlas measurements for validation
-
-⸻
-
-## Contributing
-
-We welcome contributions in:
-• Outage scoring models
-• GeoIP & ASN enrichment
-• Advanced correlation algorithms
