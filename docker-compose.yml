@@ -6,7 +6,42 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - prometheus
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=nhp_outages
+      - POSTGRES_USER=nhp_user
+      - POSTGRES_PASSWORD=nhp_password
+    volumes:
+      - timescaledb-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nhp_user -d nhp_outages"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   prometheus:
     image: prom/prometheus
@@ -28,7 +63,8 @@ services:
     logging:
       driver: "none"
 
-
 volumes:
+  redis-data:
+  timescaledb-data:
   prometheus-data:
   grafana-data:

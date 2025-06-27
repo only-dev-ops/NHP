@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nhp.services.MetricsService;
+import com.nhp.services.UpdateProcessor;
 
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
@@ -26,6 +27,9 @@ public class RipeStreamClient {
 
     @Autowired
     private MetricsService metricsService;
+
+    @Autowired
+    private UpdateProcessor updateProcessor;
 
     private static final String RIS_WS_URL = "wss://ris-live.ripe.net/v1/ws/";
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -66,18 +70,30 @@ public class RipeStreamClient {
                     // consumer logic from this socket now
                     inbound.receive().asString()
                             .doOnNext(msg -> {
-                                log.info("BGP Message: {}", msg);
+                                log.debug("BGP Message: {}", msg);
                                 metricsService.incrementBgpMessagesReceieved();
+
+                                // Process the BGP message
+                                updateProcessor.processBgpUpdate(msg);
                             })
-                            .doOnError(error -> log.error("Error while streaming", error))
+                            .doOnError(error -> {
+                                log.error("Error while streaming", error);
+                                metricsService.recordWebsocketError();
+                            })
                             .doOnComplete(() -> log.warn("Stream completed/disconnected"))
                             .subscribe();
                     return Mono.never();
                 })
-                .doOnError(error -> log.error("WebSocket connection error", error))
+                .doOnError(error -> {
+                    log.error("WebSocket connection error", error);
+                    metricsService.recordWebsocketError();
+                })
                 .retryWhen(Retry.backoff(5, java.time.Duration.ofSeconds(5))
-                        .doBeforeRetry(retrySignal -> log.warn("Retrying RIPE WebSocket connection (attempt {})",
-                                retrySignal.totalRetries() + 1)))
+                        .doBeforeRetry(retrySignal -> {
+                            log.warn("Retrying RIPE WebSocket connection (attempt {})",
+                                    retrySignal.totalRetries() + 1);
+                            metricsService.incrementStreamRestarts();
+                        }))
                 .subscribe();
     }
 

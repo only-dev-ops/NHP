@@ -4,6 +4,31 @@ logging:
     org.springframework: WARN # Suppress most Spring internals
     com.nhp: INFO # Your package — keep this at DEBUG to see your own logs
 
+spring:
+  datasource:
+    url: jdbc:postgresql://timescaledb:5432/nhp_outages
+    username: nhp_user
+    password: nhp_password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate # Don't auto-create tables, we'll use init-db.sql
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+  redis:
+    host: redis
+    port: 6379
+    timeout: 2000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+        max-wait: -1ms
+
 management:
   endpoints:
     web:
