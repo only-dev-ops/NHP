@@ -1,93 +1,201 @@
-# NHP: National Highway of Prefixes
+# Real-Time Internet Outage Map
 
-**NHP** is a real-time BGP (Border Gateway Protocol) monitoring application that utilizes the RIPE RIS Live data stream to track changes in network prefixes globally. The system helps network engineers, researchers, and security professionals observe route announcements and withdrawals in real-time. It supports live monitoring, event logging, and metric visualization with Kafka, Redis, Prometheus, and Grafana.
+A real-time BGP monitoring application that detects and correlates Internet outages globally using live BGP updates from the [RIPE RIS Live stream](https://ris-live.ripe.net/). Built in Java with Spring Boot, the system captures prefix-level visibility, identifies global withdrawals, detects recoveries, and correlates outages at the ASN level.
 
-## Project Overview
-
-NHP connects to the RIPE RIS Live WebSocket and subscribes to real-time BGP updates. Users can define a set of network prefixes to monitor, and the app filters updates accordingly. The system tracks prefix activity, path changes, and flapping behavior in real-time. Events are published to Kafka for historical replay or auditing. Redis is used as the source of truth for live state during runtime.
-
-## Architecture Overview
-
-- **Kafka** is used as an event log for all prefix tracking actions (`ADD`/`REMOVE`). The topic `bgp.prefixes.track` retains every state mutation and allows the system to rebuild tracking state deterministically.
-- **Redis** acts as the hot store for currently tracked prefixes during runtime. When the service starts, it replays the Kafka topic to restore prefix state into Redis.
-- **WebSocket Client** connects to RIPE RIS Live and dynamically resubscribes based on current prefixes stored in Redis. Reconnection uses a debounce timer to avoid unnecessary reconnect storms.
-- **Spring Boot** serves as the backend framework, exposing APIs for prefix management and providing a metrics endpoint.
-- **Prometheus + Grafana** collect and visualize application metrics, including BGP message rates, prefix activity, and system performance.
-
-## Tech Stack
-
-- **Java 17 (OpenJDK)** — Core programming language
-- **Spring Boot 3** — Reactive backend with WebFlux and Actuator
-- **Kafka** — Event sourcing for prefix tracking history and event replay
-- **Redis** — Real-time state store for active prefix tracking
-- **Docker + Docker Compose** — Simplified containerized deployment
-- **Prometheus** — Metrics collection
-- **Grafana** — Dashboarding and visualization
-- **WebSocket Client** — For RIPE RIS live stream integration
+---
 
 ## Features
 
-- Real-time BGP message consumption from RIPE RIS Live
-- Kafka-based event sourcing of prefix `ADD`/`REMOVE` actions
-- Redis-based runtime prefix tracking with one-time Kafka replay on startup
-- Dynamic prefix subscription with debounce-based reconnect logic
-- Live prefix monitoring (announcement and withdrawal tracking)
-- Planned anomaly detection (e.g., hijacks, leaks, path changes)
-- Prometheus-compatible metrics exposed via `/actuator/prometheus`
-- Grafana dashboards for prefix activity, volume, peer ASN visibility
-- Batch and single prefix add/remove via REST API
+- ✅ Real-time WebSocket ingestion of BGP UPDATEs (RIPE RIS Live)
+- ✅ Live visibility tracking per prefix across global collectors
+- ✅ Outage detection when a prefix becomes globally unreachable
+- ✅ Recovery detection when a withdrawn prefix reappears
+- ✅ Correlation of prefix outages into ASN-level outage events
+- ✅ Prometheus metrics exposure for monitoring dashboards
+- ✅ REST API for frontend dashboard queries
 
-## API Endpoints
+---
 
-### Prefix Management
+## Architecture Overview
 
-- `GET /api/prefixes`  
-  Returns the list of currently monitored prefixes from Redis.
+[RIPE RIS Live WebSocket]
+↓
+[RipeStreamClient] — parses BGP UPDATEs (announce/withdraw)
+↓
+[UpdateProcessor] — handles state tracking & outage detection
+↓
+┌──────────────────────────┐ ┌──────────────────────────┐
+│ Redis (Prefix State) │ │ outage_events (Postgres)│
+└──────────────────────────┘ └──────────────────────────┘
+↓
+[AsnOutageCorrelator] — groups prefix outages by ASN
+↓
+[asn_outages (Postgres)] — correlated ASN-level outages
+↓
+[Prometheus Metrics] + [Spring REST API for Frontend]
 
-- `POST /api/prefixes`  
-  Add one or more prefixes to monitor.  
-  **Request Body (single or batch):**
+---
 
-  ```json
-  {
-    "prefixes": ["8.8.8.0/24", "1.1.1.0/24"]
-  }
-  ```
+## System Components
 
-- `DELETE /api/prefixes/{prefix}`  
-  Remove a monitored prefix. This updates Redis and publishes a `REMOVE` event to Kafka.
+### 1. **RipeStreamClient**
 
-### Metrics
+- Connects to `wss://ris-live.ripe.net/v1/stream`
+- Subscribes to `updates`
+- Deserializes incoming BGP UPDATE messages
+- Publishes messages to the `UpdateProcessor`
 
-- `GET /actuator/prometheus`  
-  Prometheus endpoint for scraping real-time metrics.
+---
 
-## Development Notes
+### 2. **UpdateProcessor**
 
-- RIPE RIS WebSocket endpoint: `wss://ris-live.ripe.net/v1/ws/`
-- `RipeStreamClient` subscribes dynamically based on current Redis prefix set.
-- Prefix state is restored at boot by replaying the Kafka topic `bgp.prefixes.track`.
-- A debounce mechanism controls WebSocket reconnection to avoid flooding.
-- Redis is the only runtime dependency for state, Kafka is the authoritative source of prefix change history.
+- Maintains per-prefix state in Redis
+- Handles announcements and withdrawals
+- Detects:
+  - Global withdrawals → triggers `outage_start`
+  - Re-announcements → triggers `recovery`
+- Updates corresponding events in PostgreSQL
 
-## Metrics Overview
+---
 
-- Total messages consumed from RIS Live
-- Announcements and withdrawals per prefix
-- Tracked prefix count
-- Redis sync status and reconnects
-- Kafka consumer lag and processed events
-- Dropped or malformed message count
+### 3. **Redis (Prefix Visibility Store)**
 
-## Future Ideas
+- Stores peer visibility for each prefix
+- TTL-based sliding cache to evict stale, stable prefixes
+- Key format: `prefix:{CIDR}`
+- Value: set of collectors, last path, outage state
 
-- Prefix hijack and leak detection with real-time alerting
-- Historical event replays and visualization (via Kafka stream reprocessing)
-- User-defined expected origin ASN for prefix validation
-- [Threat feed integration and suspicious behavior scoring](./THREAT_INTELLIGENCE.md)
-- REST endpoints for live and historical prefix insights
-- Geo-mapping of AS paths and BGP anomalies
+---
 
-## License
+### 4. **outage_events Table**
 
-MIT License
+Stores per-prefix events:
+| Column | Type | Description |
+|----------------|-------------|-----------------------------------------|
+| `prefix` | CIDR | BGP prefix (`203.0.113.0/24`) |
+| `origin_asn` | INTEGER | ASN that originated the prefix |
+| `timestamp` | TIMESTAMP | Event time |
+| `event_type` | VARCHAR | `outage_start`, `recovery` |
+| `last_path` | TEXT | Last known AS path before event |
+| `withdrawn_by` | TEXT[] | Collectors reporting withdrawals |
+| `resolved_at` | TIMESTAMP | If recovery, time the prefix reappeared |
+| `duration` | INTERVAL | Duration of outage (if recovered) |
+
+---
+
+### 5. **AsnOutageCorrelator**
+
+- Tracks prefix outages grouped by ASN
+- Uses in-memory map with sliding timeout to form outage windows
+- When timeout ends or all prefixes recover:
+  - Writes ASN-level outage to `asn_outages`
+
+---
+
+### 6. **asn_outages Table**
+
+Stores grouped ASN-wide outage incidents:
+| Column | Type | Description |
+|----------------|-------------|---------------------------------------|
+| `asn` | INTEGER | ASN affected |
+| `start_time` | TIMESTAMP | First prefix outage in group |
+| `end_time` | TIMESTAMP | Recovery or timer expiry |
+| `duration` | INTERVAL | Total duration of the outage |
+| `prefixes` | TEXT[] | List of affected prefixes |
+| `severity` | INTEGER | Percentage of total ASN prefixes lost |
+| `country` | TEXT | Inferred country for ASN |
+
+---
+
+### 7. **Metrics (Micrometer + Prometheus)**
+
+Exposes:
+
+- Active outages
+- Prefix withdrawal rate
+- Recovery lag
+- ASN flap count
+
+Scraped at `/actuator/prometheus`
+
+---
+
+### 8. **REST API (Spring Web)**
+
+Example endpoints:
+
+- `GET /outages/recent`
+- `GET /asn/{asn}/events`
+- `GET /prefix/{prefix}/history`
+- `GET /stats/summary`
+
+---
+
+## Lifecycle Summary
+
+1. **Announce arrives**
+
+   - Add peer to prefix in Redis
+   - Possibly detect recovery if prefix was in withdrawn state
+
+2. **Withdraw arrives**
+
+   - Remove peer from prefix’s visibility set
+   - If set becomes empty → trigger outage
+
+3. **Prefix state TTL expires**
+
+   - If no activity → prefix evicted silently
+
+4. **Recovery**
+
+   - Prefix is announced again after outage
+   - Trigger `recovery` event + update outage duration
+
+5. **ASN correlation**
+   - Group multiple prefix outages into ASN-wide events
+   - Time-based or threshold-based batching
+
+---
+
+## Technologies
+
+- **Java 17** / **Spring Boot 3**
+- **Redis** (prefix visibility tracking)
+- **PostgreSQL / TimescaleDB** (event persistence)
+- **Micrometer + Prometheus** (metrics)
+- **Spring Web / Spring WebSocket** (API + ingest)
+- **Leaflet.js** or **Mapbox** (recommended frontend)
+
+---
+
+## Setup
+
+1. Run Redis and PostgreSQL
+2. Start backend:
+
+```bash
+./gradlew bootRun
+```
+
+3. Launch Prometheus and configure to scrape localhost:8080/actuator/prometheus
+4. Build frontend map (separate repo)
+
+⸻
+
+## Future Enhancements
+
+• ASN ranking based on outage frequency
+• Country-level heatmap generation
+• Alerting via Slack or webhook on ASN outage detection
+• RPKI and IRR validation
+• Integration with RIPE Atlas measurements for validation
+
+⸻
+
+## Contributing
+
+We welcome contributions in:
+• Outage scoring models
+• GeoIP & ASN enrichment
+• Advanced correlation algorithms
